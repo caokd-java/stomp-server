@@ -1,13 +1,20 @@
 package com.example.stomp;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.HashMap;
+import java.util.Map;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.messaging.MessageHeaders;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.SimpMessageSendingOperations;
+import org.springframework.messaging.simp.SimpMessageType;
 import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.stereotype.Controller;
 
@@ -18,6 +25,9 @@ public class WebSocketController {
   @Autowired
   private SimpMessageSendingOperations messagingTemplate;
 
+  @Autowired
+  private KafkaTemplate<String, ChatMessageResponse> kafkaTemplate;
+
   @MessageMapping("/chat.sendMessage")
   @SendTo("/topic/publicChatRoom")
   public ChatMessage sendMessage(@Payload ChatMessage chatMessage, SimpMessageHeaderAccessor headerAccessor) {
@@ -26,15 +36,17 @@ public class WebSocketController {
   }
 
   @MessageMapping("/chat.sendMessage.own")
-//  @SendToUser("/topic/privateMessage/")
-  public ChatMessage sendMessageOwn(@Payload ChatMessage chatMessage, SimpMessageHeaderAccessor headerAccessor) {
-    log.info("headerAccessor = {}", headerAccessor.getSessionId());
-    messagingTemplate.convertAndSend("/topic/privateMessage/" + chatMessage.getSender(), chatMessage);
-//    messagingTemplate.convertAndSendToUser(headerAccessor.getSessionId(), "/topic/privateMessage/" + headerAccessor.getSessionId(), chatMessage);
-//    messagingTemplate.convertAndSendToUser(headerAccessor.getSessionAttributes().get("sessionId").toString(), "/topic/privateMessage/" + headerAccessor.getSessionAttributes().get("sessionId").toString(), chatMessage);
-//    messagingTemplate.convertAndSendToUser(headerAccessor.getSessionAttributes().get("username").toString(), "/topic/privateMessage/" + headerAccessor.getSessionAttributes().get("username").toString(), chatMessage);
-//    messagingTemplate.convertAndSendToUser(headerAccessor.getSessionId(), "/topic/privateMessage/" + headerAccessor.getSessionId(), chatMessage);
-    return chatMessage;
+  public void sendMessageOwn(@Payload ChatMessage chatMessage, SimpMessageHeaderAccessor headerAccessor) throws JsonProcessingException {
+    log.info("Session Id = {}", headerAccessor.getSessionId());
+
+    ChatMessageResponse chatMessageResponse = new ChatMessageResponse();
+
+    chatMessageResponse.setType(chatMessage.getType());
+    chatMessageResponse.setSender(chatMessage.getSender());
+    chatMessageResponse.setContent(chatMessage.getContent());
+    chatMessageResponse.setSessionId(headerAccessor.getSessionId());
+
+    kafkaTemplate.send("notification", chatMessageResponse);
   }
 
   @MessageMapping("/chat.addUser")
